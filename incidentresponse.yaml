@@ -1,0 +1,49 @@
+---
+- name: Incident Response Playbook
+  hosts: all
+  become: yes
+
+  vars:
+    - incident_timestamp: "{{ lookup('pipe', 'date +%Y%m%d-%H%M%S') }}"
+    - artifact_path: "/var/log/artifacts/{{ incident_timestamp }}"
+    - alert_name: "potential_attack"
+
+  tasks:
+    - name: Create artifact directory
+      file:
+        path: "{{ artifact_path }}"
+        state: directory
+        mode: '0755'
+
+    - name: Collect network artifacts
+      command:
+        cmd: "/usr/sbin/tcpdump -i eth0 -s 0 -w {{ artifact_path }}/network.pcap"
+      async: 600
+      poll: 0
+
+    - name: Collect process artifacts
+      command:
+        cmd: "/bin/ps auxf >> {{ artifact_path }}/process.txt"
+      async: 600
+      poll: 0
+
+    - name: Collect log artifacts
+      command:
+        cmd: "/usr/bin/tail -n 10000 /var/log/syslog >> {{ artifact_path }}/syslog.txt"
+      async: 600
+      poll: 0
+
+    - name: Extract relevant alerts
+      command:
+        cmd: "/usr/bin/sostat --alert {{ alert_name }} --csv >> {{ artifact_path }}/alerts.csv"
+
+    - name: Notify incident responders
+      mail:
+        to: "incident-response-team@example.com"
+        subject: "Incident Report - {{ incident_timestamp }}"
+        body: "An incident has been detected. Please review the attached artifacts."
+        attach:
+          - "{{ artifact_path }}/network.pcap"
+          - "{{ artifact_path }}/process.txt"
+          - "{{ artifact_path }}/syslog.txt"
+          - "{{ artifact_path }}/alerts.csv"
